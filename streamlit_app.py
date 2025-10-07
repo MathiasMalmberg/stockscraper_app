@@ -237,7 +237,7 @@ def display_dividend_info(stock, info, hist):
     with col1:
         div_yield = info.get('dividendYield', 'N/A')
         if div_yield != 'N/A' and div_yield:
-            st.metric("Dividend Yield", f"{div_yield * 100:.2f}%")
+            st.metric("Dividend Yield", f"{div_yield:.2f}%")
         else:
             st.metric("Dividend Yield", "N/A")
     
@@ -248,7 +248,7 @@ def display_dividend_info(stock, info, hist):
     with col3:
         payout_ratio = info.get('payoutRatio', 'N/A')
         if payout_ratio != 'N/A' and payout_ratio:
-            st.metric("Payout Ratio", f"{payout_ratio * 100:.2f}%")
+            st.metric("Payout Ratio", f"{payout_ratio:.2f}%")
         else:
             st.metric("Payout Ratio", "N/A")
     
@@ -323,6 +323,206 @@ def display_earnings_calendar(stock, info):
     except:
         pass
 
+def display_insider_trading(stock):
+    """Display insider trading information"""
+    st.subheader("Insider Trading Activity")
+    
+    try:
+        insider_trades = stock.insider_transactions
+        if insider_trades is not None and not insider_trades.empty:
+            # Format the dataframe for better readability
+            insider_trades_display = insider_trades.copy()
+            
+            # Sort by date (most recent first)
+            if 'Start Date' in insider_trades_display.columns:
+                insider_trades_display = insider_trades_display.sort_values('Start Date', ascending=False)
+            
+            st.dataframe(insider_trades_display.head(20), use_container_width=True)
+            
+            # Summary statistics
+            st.write("**Recent Insider Activity Summary:**")
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                if 'Transaction' in insider_trades.columns:
+                    buys = len(insider_trades[insider_trades['Transaction'].str.contains('Buy|Purchase', case=False, na=False)])
+                    st.metric("Recent Buys", buys)
+            
+            with col2:
+                if 'Transaction' in insider_trades.columns:
+                    sells = len(insider_trades[insider_trades['Transaction'].str.contains('Sale|Sell', case=False, na=False)])
+                    st.metric("Recent Sells", sells)
+        else:
+            st.write("No insider trading data available")
+    except Exception as e:
+        st.write("Unable to fetch insider trading data")
+
+def display_options_data(stock, ticker):
+    """Display options data if available"""
+    st.subheader("Options Data")
+    
+    try:
+        # Get available expiration dates
+        expirations = stock.options
+        
+        if expirations and len(expirations) > 0:
+            # Let user select expiration date
+            selected_expiration = st.selectbox(
+                "Select Options Expiration Date:",
+                expirations[:10],  # Show first 10 expiration dates
+                key="options_expiration"
+            )
+            
+            # Get options chain for selected date
+            opt_chain = stock.option_chain(selected_expiration)
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.write("**Call Options**")
+                if not opt_chain.calls.empty:
+                    calls_display = opt_chain.calls[['strike', 'lastPrice', 'bid', 'ask', 'volume', 'openInterest', 'impliedVolatility']].head(10)
+                    st.dataframe(calls_display, use_container_width=True)
+                else:
+                    st.write("No call options data")
+            
+            with col2:
+                st.write("**Put Options**")
+                if not opt_chain.puts.empty:
+                    puts_display = opt_chain.puts[['strike', 'lastPrice', 'bid', 'ask', 'volume', 'openInterest', 'impliedVolatility']].head(10)
+                    st.dataframe(puts_display, use_container_width=True)
+                else:
+                    st.write("No put options data")
+            
+            # Options metrics
+            st.write("**Options Metrics:**")
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                total_call_volume = opt_chain.calls['volume'].sum() if not opt_chain.calls.empty else 0
+                st.metric("Total Call Volume", f"{total_call_volume:,.0f}")
+            
+            with col2:
+                total_put_volume = opt_chain.puts['volume'].sum() if not opt_chain.puts.empty else 0
+                st.metric("Total Put Volume", f"{total_put_volume:,.0f}")
+            
+            with col3:
+                if total_call_volume > 0 and total_put_volume > 0:
+                    put_call_ratio = total_put_volume / total_call_volume
+                    st.metric("Put/Call Ratio", f"{put_call_ratio:.2f}")
+                else:
+                    st.metric("Put/Call Ratio", "N/A")
+        else:
+            st.write("No options data available for this stock")
+    except Exception as e:
+        st.write("Unable to fetch options data")
+
+
+
+
+def generate_ai_insights(info, stock):
+    """Generate AI-powered insights based on financial metrics"""
+    st.subheader("AI-Powered Insights")
+    
+    insights = []
+    warnings = []
+    positives = []
+    
+    # Valuation insights
+    pe_ratio = info.get('trailingPE', None)
+    if pe_ratio and pe_ratio != 'N/A':
+        if pe_ratio < 15:
+            positives.append(f"✓ Low P/E ratio ({pe_ratio:.1f}) suggests the stock may be undervalued")
+        elif pe_ratio > 30:
+            warnings.append(f"⚠ High P/E ratio ({pe_ratio:.1f}) indicates premium valuation")
+    
+    # Profitability insights
+    profit_margin = info.get('profitMargins', None)
+    if profit_margin and profit_margin != 'N/A':
+        if profit_margin > 0.20:
+            positives.append(f"✓ Strong profit margin ({profit_margin*100:.1f}%) indicates efficient operations")
+        elif profit_margin < 0.05:
+            warnings.append(f"⚠ Low profit margin ({profit_margin*100:.1f}%) may indicate competitive pressure")
+    
+    # Debt insights
+    debt_to_equity = info.get('debtToEquity', None)
+    if debt_to_equity and debt_to_equity != 'N/A':
+        if debt_to_equity > 100:
+            warnings.append(f"⚠ High debt-to-equity ratio ({debt_to_equity:.1f}) indicates financial risk")
+        elif debt_to_equity < 50:
+            positives.append(f"✓ Low debt-to-equity ratio ({debt_to_equity:.1f}) suggests strong balance sheet")
+    
+    # ROE insights
+    roe = info.get('returnOnEquity', None)
+    if roe and roe != 'N/A':
+        if roe > 0.15:
+            positives.append(f"✓ Strong ROE ({roe*100:.1f}%) shows effective use of equity")
+        elif roe < 0.05:
+            warnings.append(f"⚠ Low ROE ({roe*100:.1f}%) may indicate poor capital efficiency")
+    
+    # Beta insights
+    beta = info.get('beta', None)
+    if beta and beta != 'N/A':
+        if beta > 1.5:
+            warnings.append(f"⚠ High beta ({beta:.2f}) indicates high volatility relative to market")
+        elif beta < 0.8:
+            positives.append(f"✓ Low beta ({beta:.2f}) suggests lower volatility than market")
+    
+    # Dividend insights
+    div_yield = info.get('dividendYield', None)
+    payout_ratio = info.get('payoutRatio', None)
+    if div_yield and div_yield != 'N/A' and div_yield > 0:
+        if div_yield > 0.03:
+            positives.append(f"✓ Attractive dividend yield ({div_yield*100:.1f}%)")
+        if payout_ratio and payout_ratio != 'N/A':
+            if payout_ratio > 0.8:
+                warnings.append(f"⚠ High payout ratio ({payout_ratio*100:.1f}%) may not be sustainable")
+    
+    # Growth insights
+    revenue_growth = info.get('revenueGrowth', None)
+    earnings_growth = info.get('earningsGrowth', None)
+    if revenue_growth and revenue_growth != 'N/A':
+        if revenue_growth > 0.15:
+            positives.append(f"✓ Strong revenue growth ({revenue_growth*100:.1f}%)")
+        elif revenue_growth < 0:
+            warnings.append(f"⚠ Declining revenue ({revenue_growth*100:.1f}%)")
+    
+    # Current ratio insights
+    current_ratio = info.get('currentRatio', None)
+    if current_ratio and current_ratio != 'N/A':
+        if current_ratio < 1:
+            warnings.append(f"⚠ Current ratio below 1 ({current_ratio:.2f}) may indicate liquidity issues")
+        elif current_ratio > 2:
+            positives.append(f"✓ Strong current ratio ({current_ratio:.2f}) suggests good liquidity")
+    
+    # Display insights
+    if positives:
+        st.success("**Positive Signals:**")
+        for insight in positives:
+            st.write(insight)
+    
+    if warnings:
+        st.warning("**Areas of Concern:**")
+        for warning in warnings:
+            st.write(warning)
+    
+    if not positives and not warnings:
+        st.info("Insufficient data to generate insights")
+    
+    # Overall sentiment
+    st.write("---")
+    sentiment_score = len(positives) - len(warnings)
+    
+    if sentiment_score > 2:
+        st.success("**Overall Sentiment: BULLISH** 📈")
+    elif sentiment_score < -2:
+        st.error("**Overall Sentiment: BEARISH** 📉")
+    else:
+        st.info("**Overall Sentiment: NEUTRAL** ➡️")
+    
+    st.caption("Note: These insights are algorithmic assessments based on financial metrics and should not be considered as investment advice.")
+
+
 def display_institutional_holdings(stock):
     """Display institutional holdings"""
     st.subheader("Institutional Holdings")
@@ -344,6 +544,7 @@ def display_institutional_holdings(stock):
     except:
         pass
 
+
 def display_stock_comparison(tickers_list):
     """Compare multiple stocks"""
     st.subheader("Stock Comparison")
@@ -362,56 +563,245 @@ def display_stock_comparison(tickers_list):
                 'Price': info.get('currentPrice', info.get('regularMarketPrice', 'N/A')),
                 'Market Cap': info.get('marketCap', 'N/A'),
                 'P/E Ratio': info.get('trailingPE', 'N/A'),
+                'Forward P/E': info.get('forwardPE', 'N/A'),
+                'PEG Ratio': info.get('pegRatio', 'N/A'),
+                'Price/Book': info.get('priceToBook', 'N/A'),
+                'Price/Sales': info.get('priceToSalesTrailing12Months', 'N/A'),
                 'Dividend Yield': info.get('dividendYield', 'N/A'),
+                'Profit Margin': info.get('profitMargins', 'N/A'),
+                'Operating Margin': info.get('operatingMargins', 'N/A'),
+                'ROE': info.get('returnOnEquity', 'N/A'),
+                'ROA': info.get('returnOnAssets', 'N/A'),
                 'Beta': info.get('beta', 'N/A'),
+                'Debt/Equity': info.get('debtToEquity', 'N/A'),
+                'Current Ratio': info.get('currentRatio', 'N/A'),
                 '52W High': info.get('fiftyTwoWeekHigh', 'N/A'),
-                '52W Low': info.get('fiftyTwoWeekLow', 'N/A')
+                '52W Low': info.get('fiftyTwoWeekLow', 'N/A'),
+                'Revenue Growth': info.get('revenueGrowth', 'N/A'),
+                'Earnings Growth': info.get('earningsGrowth', 'N/A')
             })
     
     if comparison_data:
         df_comparison = pd.DataFrame(comparison_data)
         
-        # Format the dataframe
-        if 'Market Cap' in df_comparison.columns:
-            df_comparison['Market Cap'] = df_comparison['Market Cap'].apply(
+        # Overview Section
+        st.write("### Overview")
+        overview_cols = ['Ticker', 'Name', 'Price', 'Market Cap', '52W High', '52W Low']
+        df_overview = df_comparison[overview_cols].copy()
+        
+        # Format overview
+        if 'Market Cap' in df_overview.columns:
+            df_overview['Market Cap'] = df_overview['Market Cap'].apply(
                 lambda x: f"${x/1e9:.2f}B" if x != 'N/A' else 'N/A'
             )
-        
-        if 'Dividend Yield' in df_comparison.columns:
-            df_comparison['Dividend Yield'] = df_comparison['Dividend Yield'].apply(
-                lambda x: f"{x*100:.2f}%" if x != 'N/A' else 'N/A'
+        if 'Price' in df_overview.columns:
+            df_overview['Price'] = df_overview['Price'].apply(
+                lambda x: f"${x:.2f}" if x != 'N/A' else 'N/A'
             )
         
-        st.dataframe(df_comparison, use_container_width=True)
+        st.dataframe(df_overview, use_container_width=True)
         
-        # Price comparison chart
-        fig_comparison = go.Figure()
+        # Valuation Metrics Section
+        st.write("### Valuation Metrics")
+        valuation_cols = ['Ticker', 'P/E Ratio', 'Forward P/E', 'PEG Ratio', 'Price/Book', 'Price/Sales']
+        df_valuation = df_comparison[valuation_cols].copy()
         
-        for ticker_input in tickers_list:
-            ticker = get_ticker(ticker_input.strip())
-            stock = yf.Ticker(ticker)
-            hist = stock.history(period="1y")
+        # Format valuation metrics
+        for col in ['P/E Ratio', 'Forward P/E', 'PEG Ratio', 'Price/Book', 'Price/Sales']:
+            if col in df_valuation.columns:
+                df_valuation[col] = df_valuation[col].apply(
+                    lambda x: f"{x:.2f}" if x != 'N/A' and x is not None else 'N/A'
+                )
+        
+        st.dataframe(df_valuation, use_container_width=True)
+        
+        # Profitability Metrics Section
+        st.write("### Profitability Metrics")
+        profitability_cols = ['Ticker', 'Profit Margin', 'Operating Margin', 'ROE', 'ROA']
+        df_profitability = df_comparison[profitability_cols].copy()
+        
+        # Format profitability metrics
+        for col in ['Profit Margin', 'Operating Margin', 'ROE', 'ROA']:
+            if col in df_profitability.columns:
+                df_profitability[col] = df_profitability[col].apply(
+                    lambda x: f"{x*100:.2f}%" if x != 'N/A' and x is not None else 'N/A'
+                )
+        
+        st.dataframe(df_profitability, use_container_width=True)
+        
+        # Growth Metrics Section
+        st.write("### Growth Metrics")
+        growth_cols = ['Ticker', 'Revenue Growth', 'Earnings Growth']
+        df_growth = df_comparison[growth_cols].copy()
+        
+        # Format growth metrics
+        for col in ['Revenue Growth', 'Earnings Growth']:
+            if col in df_growth.columns:
+                df_growth[col] = df_growth[col].apply(
+                    lambda x: f"{x*100:.2f}%" if x != 'N/A' and x is not None else 'N/A'
+                )
+        
+        st.dataframe(df_growth, use_container_width=True)
+        
+        # Risk Metrics Section
+        st.write("### Risk Metrics")
+        risk_cols = ['Ticker', 'Beta', 'Debt/Equity', 'Current Ratio', 'Dividend Yield']
+        df_risk = df_comparison[risk_cols].copy()
+        
+        # Format risk metrics
+        if 'Dividend Yield' in df_risk.columns:
+            df_risk['Dividend Yield'] = df_risk['Dividend Yield'].apply(
+                lambda x: f"{x*100:.2f}%" if x != 'N/A' and x is not None else 'N/A'
+            )
+        for col in ['Beta', 'Debt/Equity', 'Current Ratio']:
+            if col in df_risk.columns:
+                df_risk[col] = df_risk[col].apply(
+                    lambda x: f"{x:.2f}" if x != 'N/A' and x is not None else 'N/A'
+                )
+        
+        st.dataframe(df_risk, use_container_width=True)
+        
+        # Visualization Section
+        st.write("### Visual Comparisons")
+        
+        # Create tabs for different comparison charts
+        chart_tab1, chart_tab2, chart_tab3, chart_tab4 = st.tabs([
+            "Price Performance", 
+            "Valuation Comparison", 
+            "Profitability Comparison",
+            "Risk Comparison"
+        ])
+        
+        with chart_tab1:
+            # Price comparison chart
+            fig_comparison = go.Figure()
             
-            if not hist.empty:
-                # Normalize to percentage change
-                normalized = (hist['Close'] / hist['Close'].iloc[0] - 1) * 100
-                fig_comparison.add_trace(go.Scatter(
-                    x=hist.index,
-                    y=normalized,
-                    mode='lines',
-                    name=ticker
-                ))
+            for ticker_input in tickers_list:
+                ticker = get_ticker(ticker_input.strip())
+                stock = yf.Ticker(ticker)
+                hist = stock.history(period="1y")
+                
+                if not hist.empty:
+                    # Normalize to percentage change
+                    normalized = (hist['Close'] / hist['Close'].iloc[0] - 1) * 100
+                    fig_comparison.add_trace(go.Scatter(
+                        x=hist.index,
+                        y=normalized,
+                        mode='lines',
+                        name=ticker
+                    ))
+            
+            fig_comparison.update_layout(
+                title='Price Comparison (% Change from 1 Year Ago)',
+                xaxis_title='Date',
+                yaxis_title='% Change',
+                template='plotly_white',
+                hovermode='x unified'
+            )
+            st.plotly_chart(fig_comparison, use_container_width=True)
         
-        fig_comparison.update_layout(
-            title='Price Comparison (% Change from 1 Year Ago)',
-            xaxis_title='Date',
-            yaxis_title='% Change',
-            template='plotly_white',
-            hovermode='x unified'
+        with chart_tab2:
+            # Valuation metrics bar chart
+            valuation_metrics = ['P/E Ratio', 'Forward P/E', 'PEG Ratio', 'Price/Book']
+            
+            fig_valuation = go.Figure()
+            
+            for metric in valuation_metrics:
+                values = []
+                tickers = []
+                for item in comparison_data:
+                    if item[metric] != 'N/A' and item[metric] is not None:
+                        values.append(item[metric])
+                        tickers.append(item['Ticker'])
+                
+                if values:
+                    fig_valuation.add_trace(go.Bar(
+                        name=metric,
+                        x=tickers,
+                        y=values
+                    ))
+            
+            fig_valuation.update_layout(
+                title='Valuation Metrics Comparison',
+                xaxis_title='Stock',
+                yaxis_title='Ratio',
+                barmode='group',
+                template='plotly_white'
+            )
+            st.plotly_chart(fig_valuation, use_container_width=True)
+        
+        with chart_tab3:
+            # Profitability metrics bar chart
+            profitability_metrics = ['Profit Margin', 'Operating Margin', 'ROE', 'ROA']
+            
+            fig_profitability = go.Figure()
+            
+            for metric in profitability_metrics:
+                values = []
+                tickers = []
+                for item in comparison_data:
+                    if item[metric] != 'N/A' and item[metric] is not None:
+                        values.append(item[metric] * 100)
+                        tickers.append(item['Ticker'])
+                
+                if values:
+                    fig_profitability.add_trace(go.Bar(
+                        name=metric,
+                        x=tickers,
+                        y=values
+                    ))
+            
+            fig_profitability.update_layout(
+                title='Profitability Metrics Comparison',
+                xaxis_title='Stock',
+                yaxis_title='Percentage (%)',
+                barmode='group',
+                template='plotly_white'
+            )
+            st.plotly_chart(fig_profitability, use_container_width=True)
+        
+        with chart_tab4:
+            # Risk metrics comparison
+            fig_risk = go.Figure()
+            
+            # Beta comparison
+            betas = []
+            tickers = []
+            for item in comparison_data:
+                if item['Beta'] != 'N/A' and item['Beta'] is not None:
+                    betas.append(item['Beta'])
+                    tickers.append(item['Ticker'])
+            
+            if betas:
+                fig_risk.add_trace(go.Bar(
+                    name='Beta',
+                    x=tickers,
+                    y=betas,
+                    marker_color='lightcoral'
+                ))
+            
+            fig_risk.update_layout(
+                title='Beta Comparison (Market Risk)',
+                xaxis_title='Stock',
+                yaxis_title='Beta',
+                template='plotly_white'
+            )
+            st.plotly_chart(fig_risk, use_container_width=True)
+            
+            st.info("Beta = 1: Stock moves with the market | Beta > 1: More volatile | Beta < 1: Less volatile")
+        
+        # Export comparison data
+        csv_comparison = df_comparison.to_csv(index=False)
+        st.download_button(
+            label="Download Comparison Data (CSV)",
+            data=csv_comparison,
+            file_name="stock_comparison.csv",
+            mime="text/csv"
         )
-        st.plotly_chart(fig_comparison, use_container_width=True)
+        
     else:
         st.write("Unable to fetch comparison data")
+
 
 def display_stock_info(ticker, info, hist, stock):
     """Display stock information in a structured way"""
@@ -437,31 +827,6 @@ def display_stock_info(ticker, info, hist, stock):
         file_name=f"{ticker}_metrics.csv",
         mime="text/csv"
     )
-    
-    # Time period selector for charts
-    st.subheader("Chart Time Period")
-    time_period = st.selectbox(
-        "Select time period for charts:",
-        ["1 Month", "3 Months", "6 Months", "1 Year", "2 Years", "5 Years", "Max (All Available Data)"],
-        index=3  # Default to 1 Year
-    )
-    
-    # Map selection to yfinance period parameter
-    period_map = {
-        "1 Month": "1mo",
-        "3 Months": "3mo",
-        "6 Months": "6mo",
-        "1 Year": "1y",
-        "2 Years": "2y",
-        "5 Years": "5y",
-        "Max (All Available Data)": "max"
-    }
-    
-    selected_period = period_map[time_period]
-    
-    # Fetch historical data for selected period
-    with st.spinner(f"Loading {time_period} data..."):
-        hist_selected = stock.history(period=selected_period)
     
     # Key Metrics
     st.subheader("Key Metrics")
@@ -494,6 +859,56 @@ def display_stock_info(ticker, info, hist, stock):
         else:
             volume_formatted = 'N/A'
         st.metric("Volume", volume_formatted)
+    
+    # Stock Price Chart at the top for quick overview
+    st.subheader("Stock Price Overview")
+    
+    # Time period selector for charts
+    time_period = st.selectbox(
+        "Select time period:",
+        ["1 Month", "3 Months", "6 Months", "1 Year", "2 Years", "5 Years", "Max (All Available Data)"],
+        index=3,
+        key="time_period_selector"
+    )
+    
+    # Map selection to yfinance period parameter
+    period_map = {
+        "1 Month": "1mo",
+        "3 Months": "3mo",
+        "6 Months": "6mo",
+        "1 Year": "1y",
+        "2 Years": "2y",
+        "5 Years": "5y",
+        "Max (All Available Data)": "max"
+    }
+    
+    selected_period = period_map[time_period]
+    
+    # Fetch historical data for selected period
+    with st.spinner(f"Loading {time_period} data..."):
+        hist_selected = stock.history(period=selected_period)
+    
+    # Price Chart
+    if not hist_selected.empty:
+        fig_price = go.Figure()
+        fig_price.add_trace(go.Scatter(
+            x=hist_selected.index,
+            y=hist_selected['Close'],
+            mode='lines',
+            name='Close Price',
+            line=dict(color='#1f77b4', width=2)
+        ))
+        fig_price.update_layout(
+            title=f'Stock Price History ({time_period})',
+            xaxis_title='Date',
+            yaxis_title='Price ($)',
+            hovermode='x unified',
+            template='plotly_white',
+            height=500
+        )
+        st.plotly_chart(fig_price, use_container_width=True)
+    else:
+        st.write("No historical data available for selected period")
     
     # Financial Ratios Section
     st.subheader("Financial Ratios & Risk Metrics")
@@ -581,34 +996,16 @@ def display_stock_info(ticker, info, hist, stock):
     display_analyst_recommendations(stock, info)
     
     # Dividend Information
-    display_dividend_info(stock, info, hist)
+    display_dividend_info(stock, info, hist_selected)
     
     # Earnings Calendar
     display_earnings_calendar(stock, info)
     
-    # Charts Section
-    st.subheader("Interactive Charts")
+    # Additional Charts Section
+    st.subheader("Additional Charts")
     
-    # Price Chart
+    # Volume Chart
     if not hist_selected.empty:
-        fig_price = go.Figure()
-        fig_price.add_trace(go.Scatter(
-            x=hist_selected.index,
-            y=hist_selected['Close'],
-            mode='lines',
-            name='Close Price',
-            line=dict(color='#1f77b4', width=2)
-        ))
-        fig_price.update_layout(
-            title=f'Stock Price History ({time_period})',
-            xaxis_title='Date',
-            yaxis_title='Price ($)',
-            hovermode='x unified',
-            template='plotly_white'
-        )
-        st.plotly_chart(fig_price, use_container_width=True)
-        
-        # Volume Chart
         fig_volume = go.Figure()
         fig_volume.add_trace(go.Bar(
             x=hist_selected.index,
@@ -644,14 +1041,21 @@ def display_stock_info(ticker, info, hist, stock):
                 template='plotly_white'
             )
             st.plotly_chart(fig_pe, use_container_width=True)
-    else:
-        st.write("No historical data available for selected period")
     
     # Financial Statements
     display_financial_statements(stock)
     
+    # Insider Trading
+    display_insider_trading(stock)
+    
     # Institutional Holdings
     display_institutional_holdings(stock)
+    
+    # Options Data
+    display_options_data(stock, ticker)
+   
+    # AI-Powered Insights
+    generate_ai_insights(info, stock)
     
     # Historical Data Table
     st.subheader("Recent Trading Data")
@@ -668,6 +1072,7 @@ def display_stock_info(ticker, info, hist, stock):
             file_name=f"{ticker}_historical_data_{selected_period}.csv",
             mime="text/csv"
         )
+
 
 # Streamlit App
 st.set_page_config(page_title="Stock Information Scraper", page_icon="📈", layout="wide")
